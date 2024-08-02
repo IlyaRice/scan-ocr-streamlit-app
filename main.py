@@ -570,75 +570,31 @@ def merge_tables(all_tables_data):
     # Load service descriptions
     with open('service_descriptions.txt', 'r', encoding='utf-8') as f:
         correction_dictionary = [line.strip() for line in f]
-    
+
     # Standard phrase to remove
     reference_phrase = "(полустационарное обслуживание)"
 
-    merged_table = []
-    previous_table_was_split = False
+    # Merge all text rows from all tables
+    merged_table = [cell['text'] for page_tables in all_tables_data for table in page_tables for cell in table['cells'] if cell['text']]
 
-    for page_index, page_tables in enumerate(all_tables_data):
-        for i, table in enumerate(page_tables):
-            if not table['suspected_split']:
-                # Add all rows from a non-split table directly
-                merged_table.extend([cell['text'] for cell in table['cells'] if cell['text']])
-                previous_table_was_split = False  # Reset the flag
-            else:
-                if previous_table_was_split:
-                    # Handle merging of split tables
-                    prev_last_row = merged_table[-1]
-                    current_second_row = table['cells'][1]['text']
-
-                    # Perform fuzzy matching using correct_ocr_errors
-                    best_str1, score1 = correct_ocr_errors(prev_last_row, correction_dictionary)
-                    best_str2, score2 = correct_ocr_errors(current_second_row, correction_dictionary)
-
-                    combined_row = ' '.join([prev_last_row, current_second_row])
-                    best_str3, score3 = correct_ocr_errors(combined_row, correction_dictionary)
-
-                    # Decide how to merge based on the rules
-                    if best_str1 and best_str2 and best_str1 != best_str2:
-                        merged_table[-1] = prev_last_row
-                        merged_table.append(current_second_row)
-                    elif not best_str1 and not best_str2:
-                        if best_str3:
-                            merged_table[-1] = combined_row
-                    elif best_str1 == best_str2:
-                        if score3 > score1 and score3 > score2:
-                            merged_table[-1] = combined_row
-                        else:
-                            merged_table[-1] = prev_last_row
-
-                    # Add remaining rows from the current table except the first row
-                    merged_table.extend([cell['text'] for cell in table['cells'][2:] if cell['text']])
-                    previous_table_was_split = False
-                else:
-                    # Check if the current table is the first in the document and suspected to be split
-                    if page_index == 0 and i == 0:
-                        merged_table.extend([cell['text'] for cell in table['cells'] if cell['text']])
-                        previous_table_was_split = True
-                    else:
-                        # Starting a new split table, add the first row
-                        merged_table.extend([cell['text'] for cell in table['cells'] if cell['text']])
-                        previous_table_was_split = True
-
-    # Correct the merged text data
-    corrected_table = []
-    #print(merged_table)
+    # Remove similar phrases and correct OCR errors
+    cleaned_table = []
     for row in merged_table:
-        # Remove similar phrases
+        # Remove reference phrase
         cleaned_row = remove_similar_phrases(row, reference_phrase)
         # Correct OCR errors
         corrected_row, _ = correct_ocr_errors(cleaned_row, correction_dictionary)
-        # Check for rows similar to "Наименование услуги"
-        _, name_score = correct_ocr_errors(corrected_row, ["Наименование услуги"])
-        #print(f"row: {row}\ncleaned_row {cleaned_row}\ncorrected_row {corrected_row}\nname_score {name_score}\n\n")
-        if name_score > 70:
-            continue  # Skip this row only if the similarity score is above 85
-        # Add to the corrected table
-        corrected_table.append(corrected_row)
+        cleaned_table.append(corrected_row)
 
-    return corrected_table
+    # Remove empty rows, header rows, and duplicates
+    unique_table = []
+    seen_rows = set()
+    for row in cleaned_table:
+        if row and row != "Наименование услуги" and row not in seen_rows:
+            unique_table.append(row)
+            seen_rows.add(row)
+
+    return unique_table
 
 
 def pdf_text_extraction_workflow(pdf_path):
@@ -681,18 +637,27 @@ def main():
     uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
     if uploaded_file is not None:
         if st.button("Process PDF"):
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
-                temp_pdf.write(uploaded_file.read())
-                temp_pdf_path = temp_pdf.name
-            
-            # Run the workflow function with the temporary file path
-            results = pdf_text_extraction_workflow(temp_pdf_path)
-            
-            # Display the results
-            st.text_area("Extracted Text", value='\n'.join(results), height=300)
-            
-            # Optionally, clean up the temporary file
-            os.remove(temp_pdf_path)
+            with st.spinner('Processing...'):
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
+                    temp_pdf.write(uploaded_file.read())
+                    temp_pdf_path = temp_pdf.name
+                    images = extract_images_from_pdf(temp_pdf_path)
+
+                # Run the workflow function with the temporary file path
+                results = pdf_text_extraction_workflow(temp_pdf_path)
+                text_block = '\n'.join(results)
+                
+                # Display the extracted text with a copy button
+                st.code(text_block, language="plaintext")
+
+                # Optionally, clean up the temporary file
+                os.remove(temp_pdf_path)
+                
+                # Display images in a gallery under a spoiler
+                if images:
+                    with st.expander("Show extracted images"):
+                        for img in images:
+                            st.image(img, use_column_width=True)
 
 if __name__ == "__main__":
     main()
