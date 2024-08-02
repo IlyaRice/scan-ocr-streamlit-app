@@ -1,4 +1,17 @@
-streamlit==1.36.0
+# Image processing
+opencv-python-headless==4.10.0.84
+numpy==1.26.2
 Pillow==10.0.1
+PyMuPDF==1.24.7
+
+# Machine learning
+scikit-learn==1.5.1
+
+# Optical character recognition (OCR)
 pytesseract==0.3.10
-pyperclip==1.9.0
+
+# Text processing and error correction
+fuzzywuzzy==0.18.0
+
+# Web application framework
+streamlit==1.36.0
