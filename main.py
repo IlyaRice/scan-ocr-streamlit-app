@@ -692,38 +692,46 @@ def pdf_text_extraction_workflow(pdf_path):
 
 
 def main():
-    st.title("PDF Table Digitization App")
+    st.title("Приложение для оцифровки PDF сканов")
 
-    uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
+    uploaded_file = st.file_uploader("Загрузите PDF файл", type="pdf")
     if uploaded_file is not None:
-        if st.button("Process PDF"):
-            with st.spinner('Processing...'):
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
-                    temp_pdf.write(uploaded_file.read())
-                    temp_pdf_path = temp_pdf.name
-                    images = extract_images_from_pdf(temp_pdf_path)
+        with st.spinner('Обработка...'):
+            # Create a temporary file to store the uploaded PDF
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
+                temp_pdf.write(uploaded_file.read())
+                temp_pdf_path = temp_pdf.name
 
-                # Run the workflow function with the temporary file path
-                name, results = pdf_text_extraction_workflow(temp_pdf_path)
+            # Run the workflow function with the temporary file path
+            name, results = pdf_text_extraction_workflow(temp_pdf_path)
 
-                # Display the extracted name
-                if name:
-                    st.code(name, language="plaintext")
-                else:
-                    st.code("ФИО не найдено!", language="plaintext")
-                
-                # Display the extracted text with a copy button
-                text_block = '\n'.join(results)
-                st.code(text_block, language="plaintext")
+            # Display the extracted name
+            if name:
+                st.write("ФИО:")
+                st.code(name, language="plaintext")
+            else:
+                st.write("ФИО не найдено!")
 
-                # Optionally, clean up the temporary file
-                os.remove(temp_pdf_path)
+            # Display the extracted text with a copy button
+            st.write("Все услуги из файла:")
+            text_block = '\n'.join(results)
+            st.code(text_block, language="plaintext")
 
-                # Display images in a gallery under a spoiler
-                if images:
-                    with st.expander("Show extracted images"):
-                        for img in images:
-                            st.image(img, use_column_width=True)
+            # Disclaimer note before displaying images
+            st.markdown(
+                "<small>Пожалуйста, убедитесь в корректности извлечённых данных.</small>",
+                unsafe_allow_html=True
+            )
+
+            # Display images in a gallery under a spoiler
+            images = extract_images_from_pdf(temp_pdf_path)
+            if images:
+                with st.expander("Показать все страницы из файла"):
+                    for img in images:
+                        st.image(img, use_column_width=True)
+
+            # Сlean up the temporary file
+            os.remove(temp_pdf_path)
 
 if __name__ == "__main__":
     main()
