@@ -15,6 +15,7 @@ import pytesseract  # Python-tesseract, an OCR tool for extracting text from ima
 
 # Text processing and error correction
 from fuzzywuzzy import fuzz  # Library for fuzzy string matching, useful for text comparison and correction.
+import re # Regular expressions
 
 # Web application framework
 import streamlit as st  # An open-source app framework for Machine Learning and Data Science teams.
@@ -597,39 +598,98 @@ def merge_tables(all_tables_data):
     return unique_table
 
 
+def extract_fio_from_image(image, x1_pct, y1_pct, x2_pct, y2_pct):
+    """Crop the image, perform OCR, and extract the cleaned FIO."""
+    def crop_image(img, x1_pct, y1_pct, x2_pct, y2_pct):
+        """Crop the image based on the relative coordinates."""
+        height, width = img.shape[:2]
+        x1 = int(x1_pct * width)
+        y1 = int(y1_pct * height)
+        x2 = int(x2_pct * width)
+        y2 = int(y2_pct * height)
+        return img[y1:y2, x1:x2]
+
+    def extract_name(text):
+        """Extract the name after the 'Гражданин(ка): ' phrase."""
+        reference_phrase = "Гражданин(ка):"
+        lines = text.split('\n')
+
+        for line in lines:
+            if fuzz.partial_ratio(line, reference_phrase) >= 70:
+                # Remove the reference phrase using the fuzzy match and extract the name
+                cleaned_line = remove_similar_phrases(line, reference_phrase)
+                name = cleaned_line.strip()
+                return clean_name(name)
+        
+        return None
+
+    def clean_name(name):
+        """Remove unwanted characters from the beginning and end of the name."""
+        allowed_chars = "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЬЫЪЭЮЯабвгдеёжзийклмнопрстуфхцчшщьыъэюя"
+        
+        # Remove unwanted characters from the start
+        start = 0
+        while start < len(name) and name[start] not in allowed_chars:
+            start += 1
+        
+        # Remove unwanted characters from the end
+        end = len(name)
+        while end > start and name[end-1] not in allowed_chars:
+            end -= 1
+        
+        # Extract and return the cleaned name
+        return name[start:end]
+
+    # Crop the image based on the given coordinates
+    cropped_image = crop_image(image, x1_pct, y1_pct, x2_pct, y2_pct)
+    
+    # Perform OCR to extract text
+    text = pytesseract.image_to_string(cropped_image, lang='rus', config="--psm 6")
+    
+    # Extract and clean the FIO from the text
+    return extract_name(text)
+
+
 def pdf_text_extraction_workflow(pdf_path):
     """Process a PDF file to extract text from tables, handling scanned images and various preprocessing steps."""
     
     # Initialize the array to hold text from all tables.
     all_texts = []
+    name = None  # Initialize variable to store extracted name
 
     # Extract images from the PDF.
     images = extract_images_from_pdf(pdf_path)
 
-    # Loop through each image (page) in the PDF.
-    for page_number, image in enumerate(images):
-        # Step 1: Remove vertical printer lines.
-        image_without_lines = remove_vertical_printer_lines(image)
-        
-        # Step 2: Correct image skew.
-        deskewed_image = correct_image_skew(image_without_lines)
-        
-        # Step 3: Enhance and clean faint scans.
-        enhanced_image = enhance_and_clean_faint_scan(deskewed_image)
-        
-        # Step 4: Extract tables and their cells.
-        table_info = extract_tables_and_cells(enhanced_image)
-        
-        # Step 4: Extract text from the table cells.
-        extracted_text = extract_text_from_table_cells(enhanced_image, table_info)
+    # Check if there are images to process
+    if images:
+        # Extract name from the first page
+        name = extract_fio_from_image(images[0], 0.08, 0.20, 0.8, 0.35)
 
-        # Step 5: Add the extracted text to the all_texts list.
-        all_texts.append(extracted_text if extracted_text else [])
+        # Loop through each image (page) in the PDF.
+        for page_number, image in enumerate(images):
+            # Step 1: Remove vertical printer lines.
+            image_without_lines = remove_vertical_printer_lines(image)
+            
+            # Step 2: Correct image skew.
+            deskewed_image = correct_image_skew(image_without_lines)
+            
+            # Step 3: Enhance and clean faint scans.
+            enhanced_image = enhance_and_clean_faint_scan(deskewed_image)
+            
+            # Step 4: Extract tables and their cells.
+            table_info = extract_tables_and_cells(enhanced_image)
+            
+            # Step 5: Extract text from the table cells.
+            extracted_text = extract_text_from_table_cells(enhanced_image, table_info)
 
-    # Step 6: Merge texts from all tables across all pages.    
+            # Step 6: Add the extracted text to the all_texts list.
+            all_texts.append(extracted_text if extracted_text else [])
+
+    # Step 7: Merge texts from all tables across all pages.    
     merged_tables_text = merge_tables(all_texts)
     
-    return merged_tables_text
+    return name, merged_tables_text
+
 
 def main():
     st.title("PDF Table Digitization App")
@@ -644,15 +704,21 @@ def main():
                     images = extract_images_from_pdf(temp_pdf_path)
 
                 # Run the workflow function with the temporary file path
-                results = pdf_text_extraction_workflow(temp_pdf_path)
-                text_block = '\n'.join(results)
+                name, results = pdf_text_extraction_workflow(temp_pdf_path)
+
+                # Display the extracted name
+                if name:
+                    st.code(name, language="plaintext")
+                else:
+                    st.code("ФИО не найдено!", language="plaintext")
                 
                 # Display the extracted text with a copy button
+                text_block = '\n'.join(results)
                 st.code(text_block, language="plaintext")
 
                 # Optionally, clean up the temporary file
                 os.remove(temp_pdf_path)
-                
+
                 # Display images in a gallery under a spoiler
                 if images:
                     with st.expander("Show extracted images"):
