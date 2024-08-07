@@ -752,9 +752,6 @@ def main():
     uploaded_file = st.file_uploader("Загрузите PDF файл", type="pdf")
     if uploaded_file is not None:
         
-        # Print start time and file name
-        print(f"Function pdf_text_extraction_workflow started")
-        
         with st.spinner('Обработка...'):
             # Create a temporary file to store the uploaded PDF
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
@@ -763,10 +760,6 @@ def main():
 
             # Run the workflow function with the temporary file path
             name, service_duration, results = pdf_text_extraction_workflow(temp_pdf_path)
-            
-            # Print end time and name
-            print(f"Function pdf_text_extraction_workflow ended")
-            print(f"Extracted name: {name}")
             
             # Display the extracted name
             if name:
