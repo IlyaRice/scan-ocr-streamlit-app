@@ -1,5 +1,5 @@
 # Image processing
-opencv-python-headless==4.10.0.84
+opencv-python-headless==4.5.4.60
 numpy==1.26.2
 Pillow==10.0.1
 PyMuPDF==1.24.7
