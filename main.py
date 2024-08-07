@@ -2,7 +2,6 @@
 
 # Standard libraries and file system operations
 import os  # Provides a way of using operating system dependent functionality, like reading or writing to the filesystem.
-import datetime
 import sys # For easyocr console warning removal
 import contextlib
 
@@ -753,10 +752,8 @@ def main():
     uploaded_file = st.file_uploader("Загрузите PDF файл", type="pdf")
     if uploaded_file is not None:
         
-        # Get the current time
-        start_time = datetime.datetime.now()
         # Print start time and file name
-        print(f"Function pdf_text_extraction_workflow started at: {start_time}")
+        print(f"Function pdf_text_extraction_workflow started")
         
         with st.spinner('Обработка...'):
             # Create a temporary file to store the uploaded PDF
@@ -767,11 +764,8 @@ def main():
             # Run the workflow function with the temporary file path
             name, service_duration, results = pdf_text_extraction_workflow(temp_pdf_path)
             
-            # Get the current time at the end of the function
-            end_time = datetime.datetime.now()
-            
             # Print end time and name
-            print(f"Function pdf_text_extraction_workflow ended at: {end_time}")
+            print(f"Function pdf_text_extraction_workflow ended")
             print(f"Extracted name: {name}")
             
             # Display the extracted name
