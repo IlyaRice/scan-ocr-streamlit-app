@@ -23,7 +23,7 @@ import re # Regular expressions
 import streamlit as st  # An open-source app framework for Machine Learning and Data Science teams.
 import tempfile  # Used for creating temporary files and directories
 
-reader = easyocr.Reader(['ru'])  # Initialize the EasyOCR reader with Russian language support
+reader = easyocr.Reader(['ru'], model_storage_directory='easyocr_models/')  # Initialize the EasyOCR reader with Russian language support and downloaded models
 
 # Extract images from pdf file
 def extract_images_from_pdf(pdf_path):
