@@ -722,6 +722,10 @@ def pdf_text_extraction_workflow(pdf_path):
 
 
 def main():
+    st.set_page_config(
+        page_title="PDF Scan", 
+        page_icon=":page_facing_up:"
+    )
     st.title("Приложение для оцифровки PDF сканов")
 
     uploaded_file = st.file_uploader("Загрузите PDF файл", type="pdf")
