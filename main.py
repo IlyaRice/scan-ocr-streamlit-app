@@ -576,7 +576,7 @@ def merge_tables(all_tables_data):
                     all_cells[i + 1]['cell_suspected_split'] = False
 
                 final_cells.append(cell)
-                i += 2  # Skip the next cell since it's handled
+                i += 1
                 continue
 
         final_cells.append(cell)
