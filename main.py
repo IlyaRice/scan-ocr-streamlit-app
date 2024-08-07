@@ -3,6 +3,8 @@
 # Standard libraries and file system operations
 import os  # Provides a way of using operating system dependent functionality, like reading or writing to the filesystem.
 import datetime
+import sys # For easyocr console warning removal
+import contextlib
 
 # Image processing
 import cv2  # OpenCV, an open-source library for computer vision, machine learning, and image processing.
@@ -24,7 +26,26 @@ import re # Regular expressions
 import streamlit as st  # An open-source app framework for Machine Learning and Data Science teams.
 import tempfile  # Used for creating temporary files and directories
 
-reader = easyocr.Reader(['ru'], model_storage_directory='easyocr_models/')  # Initialize the EasyOCR reader with Russian language support and downloaded models
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="easyocr.detection")
+
+# Context manager to suppress stdout and stderr
+@contextlib.contextmanager
+def suppress_output():
+    with open(os.devnull, 'w') as devnull:
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        sys.stdout = devnull
+        sys.stderr = devnull
+        try:
+            yield
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+
+# Initialize the EasyOCR reader with Russian language support without warnings
+with suppress_output():
+    reader = easyocr.Reader(['ru'], model_storage_directory='easyocr_models/')
 
 # Extract images from pdf file
 def extract_images_from_pdf(pdf_path):
