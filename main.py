@@ -722,7 +722,6 @@ def pdf_text_extraction_workflow(pdf_path):
 
 
 def main():
-    st.set_option('server.debug', True)
     st.set_page_config(
         page_title="PDF Scan", 
         page_icon=":page_facing_up:"
