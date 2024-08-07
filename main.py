@@ -698,14 +698,7 @@ def find_common_service_duration(service_durations):
 # STEP 7 Combine all functions and return finished result
 def pdf_text_extraction_workflow(pdf_path):
     """Process a PDF file to extract text from tables, handling scanned images and various preprocessing steps."""
-    
-    # Get the current time
-    start_time = datetime.datetime.now()
-    
-    # Print start time and file name
-    print(f"Function pdf_text_extraction_workflow started at: {start_time}")
-    print(f"Processing file: {pdf_path}")
-    
+       
     # Initialize the array to hold text from all tables.
     name = None  # Initialize variable to store extracted name
     all_service_durations = [] # Initialize list to store all service durations
@@ -747,13 +740,6 @@ def pdf_text_extraction_workflow(pdf_path):
     # Step 7: Merge texts from all tables across all pages.
     merged_tables_text = merge_tables(all_texts)
     
-    # Get the current time at the end of the function
-    end_time = datetime.datetime.now()
-    
-    # Print end time and name
-    print(f"Function pdf_text_extraction_workflow ended at: {end_time}")
-    print(f"Extracted name: {name}")
-    
     return name, service_duration, merged_tables_text
 
 
@@ -766,6 +752,12 @@ def main():
 
     uploaded_file = st.file_uploader("Загрузите PDF файл", type="pdf")
     if uploaded_file is not None:
+        
+        # Get the current time
+        start_time = datetime.datetime.now()
+        # Print start time and file name
+        print(f"Function pdf_text_extraction_workflow started at: {start_time}")
+        
         with st.spinner('Обработка...'):
             # Create a temporary file to store the uploaded PDF
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
@@ -774,7 +766,14 @@ def main():
 
             # Run the workflow function with the temporary file path
             name, service_duration, results = pdf_text_extraction_workflow(temp_pdf_path)
-
+            
+            # Get the current time at the end of the function
+            end_time = datetime.datetime.now()
+            
+            # Print end time and name
+            print(f"Function pdf_text_extraction_workflow ended at: {end_time}")
+            print(f"Extracted name: {name}")
+            
             # Display the extracted name
             if name:
                 st.write("ФИО:")
