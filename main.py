@@ -1,3 +1,5 @@
+# Libraries import
+
 # Standard libraries and file system operations
 import os  # Provides a way of using operating system dependent functionality, like reading or writing to the filesystem.
 
@@ -11,7 +13,7 @@ import fitz  # PyMuPDF, a library for accessing PDF files and extracting informa
 from sklearn.linear_model import LinearRegression  # Provides linear regression model functionality.
 
 # Optical character recognition (OCR)
-import pytesseract  # Python-tesseract, an OCR tool for extracting text from images.
+import easyocr  # An OCR tool for extracting text from images.
 
 # Text processing and error correction
 from fuzzywuzzy import fuzz  # Library for fuzzy string matching, useful for text comparison and correction.
@@ -19,9 +21,11 @@ import re # Regular expressions
 
 # Web application framework
 import streamlit as st  # An open-source app framework for Machine Learning and Data Science teams.
-import tempfile  # Used for creating temporary files and directories.
+import tempfile  # Used for creating temporary files and directories
 
+reader = easyocr.Reader(['ru'])  # Initialize the EasyOCR reader with Russian language support
 
+# Extract images from pdf file
 def extract_images_from_pdf(pdf_path):
     """Extract images from a PDF file and return them as a list of numpy arrays in grayscale."""
     images = []
@@ -48,8 +52,7 @@ def extract_images_from_pdf(pdf_path):
     pdf_document.close()
     return images
 
-
-
+# STEP 1 Remove vertical lines from printer
 def remove_vertical_printer_lines(image, block_size=13, c=2, blur_kernel_size=3, crop_params=(50, 12, 35)):
     """Process the entire image to remove vertical printer lines."""
     
@@ -150,6 +153,7 @@ def remove_vertical_printer_lines(image, block_size=13, c=2, blur_kernel_size=3,
     return remove_detected_lines_from_image(image, all_contours)
 
 
+#STEP 2 Auto-deskew image
 def correct_image_skew(image):
     """Corrects the skew of the input image."""
     
@@ -190,57 +194,7 @@ def correct_image_skew(image):
         
     return image
 
-
-def enhance_and_clean_faint_scan(image):
-    """Enhance and clean up poorly printed faint scans."""
-
-    def binarize_and_create_inverted_mask(image):
-        """Binarize the image and create an inverted mask."""
-        otsu_thresh, _ = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        _, binary_image = cv2.threshold(image, otsu_thresh + 40, 255, cv2.THRESH_BINARY)
-        inverted_mask = cv2.bitwise_not(binary_image)
-        return binary_image, inverted_mask
-
-    def calculate_masked_area_brightness(image, mask_indices):
-        """Calculate the average brightness of valid pixels within the mask."""
-        valid_mask = (image[mask_indices] >= 0) & (image[mask_indices] <= 245)
-        valid_pixel_brightness = image[mask_indices][valid_mask]
-        return np.mean(valid_pixel_brightness)
-
-    def apply_contrast_and_gamma_correction(image, mask_indices, gamma=0.8):
-        """Apply CLAHE and gamma correction to the image."""
-        clahe = cv2.createCLAHE(clipLimit=5.0, tileGridSize=(16, 16))
-        corrected_image = np.copy(image)
-        corrected_image[mask_indices] = clahe.apply(image)[mask_indices]
-        
-        invGamma = 1.0 / gamma
-        table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
-        corrected_image[mask_indices] = cv2.LUT(corrected_image[mask_indices].reshape(-1, 1), table).reshape(-1)
-        corrected_image[corrected_image > 220] = 255
-        return corrected_image
-
-    def remove_mask_artifacts(image, inverted_mask):
-        """Remove artifacts from the image."""
-        dilated_mask = cv2.dilate(inverted_mask, np.ones((7, 7), np.uint8), iterations=1)
-        binary_mask = cv2.bitwise_not(dilated_mask)
-        image[binary_mask == 255] = 255
-        return image
-
-    # Main execution flow
-    binary_image, inverted_mask = binarize_and_create_inverted_mask(image)
-    mask_indices = np.where(inverted_mask == 255)
-    average_brightness = calculate_masked_area_brightness(image, mask_indices)
-
-    if average_brightness > 80:
-        corrected_image = apply_contrast_and_gamma_correction(image, mask_indices)
-    else:
-        corrected_image = np.copy(image)
-
-    corrected_image = remove_mask_artifacts(corrected_image, inverted_mask)
-
-    return corrected_image
-
-
+# STEP 3 Find tables and cells, group cells by tables
 def refine_cell_coordinates(cells, table_rect, tolerance=10):
     def group_cells_by_rows_or_columns(cells, tolerance, index):
         """Group cells into rows or columns based on their coordinates."""
@@ -339,7 +293,6 @@ def refine_cell_coordinates(cells, table_rect, tolerance=10):
         'num_columns': num_columns,
         'total_cells': total_cells
     }
-
 
 def extract_tables_and_cells(image):
     """Extract tables and their cells from the grayscale image."""
@@ -454,99 +407,14 @@ def extract_tables_and_cells(image):
     return refined_tables
 
 
-def extract_text_from_table_cells(image, table_info):
-    """Extract text from the second column of table cells in the image."""
-
-    def extract_raw_text_from_cells(image, cells):
-        """Extract raw text from the specified cells without correction."""
-        digitized_data = []
-        for cell in cells:
-            if cell['column'] == 1:  # Second column (0-indexed)
-                # Extract the region of interest (ROI) for each cell using cell coordinates
-                x1, y1 = cell['corners'][0]
-                x2, y2 = cell['corners'][2]
-                roi = image[y1:y2, x1:x2]  # Slice the numpy array to get the ROI
-
-                # Use Tesseract to extract text from the cell ROI
-                text = pytesseract.image_to_string(roi, lang='rus', config="--psm 6")
-
-                # Replace newlines with spaces
-                cleaned_text = text.replace('\n', ' ').replace('\r', ' ').strip()
-
-                digitized_data.append({
-                    'row': cell['row'],
-                    'column': cell['column'],
-                    'text': cleaned_text  # Store raw text without correction
-                })
-
-        return digitized_data
-
-    def is_suspected_split(image, table, table_index, total_tables):
-        """Check if the current table is suspected to be a continuation from a previous page or to continue on the next page."""
-        suspected_split = False
-        height, width = image.shape
-
-        def check_text_presence(crop):
-            """Helper function to check if text is present in the cropped image portion."""
-            text = pytesseract.image_to_string(crop, lang='rus', config="--psm 6")
-            return len(text.strip()) < 10
-
-        # Checking if the table is the first on the page
-        if table_index == 0:
-            # Coordinates for the crop region above the table
-            first_cell = table['cells'][0]
-            top_left_y = first_cell['corners'][0][1]
-            top_crop_y = max(0, top_left_y - 300)
-            top_crop = image[top_crop_y:top_left_y, 0:width]
-
-            # Check for absence of text above the first table
-            if check_text_presence(top_crop):
-                suspected_split = True
-
-        # Checking if the table is the last on the page
-        if table_index == total_tables - 1:
-            # Coordinates for the crop region below the table
-            last_cell = table['cells'][-1]
-            bottom_left_y = last_cell['corners'][2][1]
-            bottom_crop_y = min(height, bottom_left_y + 300)
-            bottom_crop = image[bottom_left_y:bottom_crop_y, 0:width]
-
-            # Check for absence of text below the last table
-            if check_text_presence(bottom_crop):
-                suspected_split = True
-
-        return suspected_split
-
-    all_tables_data = []
-
-    # Sort tables by their top-left Y coordinate (table_box[1]) in ascending order
-    table_info.sort(key=lambda x: x['table_box'][1])
-
-    for i, table in enumerate(table_info):
-        if table['num_columns'] == 6:
-            # Digitize the content of each cell from the second column
-            digitized_data = extract_raw_text_from_cells(image, table['cells'])
-
-            # Check if the table is suspected to be split
-            suspected_split = is_suspected_split(image, table, i, len(table_info))
-
-            table_data = {
-                'table_num': i + 1,
-                'cells': digitized_data,
-                'suspected_split': suspected_split
-            }
-            all_tables_data.append(table_data)
-
-    return all_tables_data
-
-
-def remove_similar_phrases(text, reference_phrase):
+# STEP 4 OCR text in cells and find cells splitted in two pages
+def remove_similar_phrases(text, reference_phrase, confidence_level):
     """Remove phrases similar to the reference phrase from the text."""
     words = text.split()
     clean_words = []
     for word in words:
         score = fuzz.partial_ratio(word, reference_phrase)
-        if score < 70:
+        if score < confidence_level:
             clean_words.append(word)
     return ' '.join(clean_words)
 
@@ -565,8 +433,99 @@ def correct_ocr_errors(text, correction_dictionary):
         closest_match = ""
 
     return closest_match, best_score
+    
+def extract_text_from_table_cells(image, table_info):
+    """Extract text from the second and fifth columns of table cells in the image."""
 
+    def extract_raw_text_from_cells(image, cells, target_column):
+        """Extract raw text from the specified column cells without correction."""
+        digitized_data = []
+        for cell in cells:
+            if cell['column'] == target_column:
+                # Extract the region of interest (ROI) for each cell using cell coordinates
+                x1, y1 = cell['corners'][0]
+                x2, y2 = cell['corners'][2]
+                roi = image[y1:y2, x1:x2]  # Slice the numpy array to get the ROI
 
+                # Use EasyOCR to extract text from the cell ROI
+                allowlist = "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя0123456789(),-. "
+                easyocr_results = reader.readtext(roi, detail=0, paragraph=True, allowlist=allowlist)
+                easyocr_text = "".join(easyocr_results).strip()
+
+                digitized_data.append({
+                    'row': cell['row'],
+                    'column': cell['column'],
+                    'text': easyocr_text,  # Store raw text without correction
+                    'cell_suspected_split': False  # Default status
+                })
+
+        return digitized_data
+
+    def is_suspected_split(image, table, table_index, total_tables):
+        """Check if the current table is suspected to be a continuation from a previous page or to continue on the next page."""
+        height, width = image.shape
+
+        def check_text_presence(crop):
+            """Helper function to check if text is present in the cropped image portion."""
+            easyocr_results = reader.readtext(crop, detail=0, paragraph=True)
+            text = "".join(easyocr_results).strip()
+            return len(text) < 5
+
+        # Checking if the table is the first on the page
+        if table_index == 0:
+            first_cell = table['cells'][0]
+            top_left_y = first_cell['corners'][0][1]
+            top_crop_y = max(0, top_left_y - 300)
+            top_crop = image[top_crop_y:top_left_y, 0:width]
+
+            if check_text_presence(top_crop):
+                return 'bottom'
+
+        # Checking if the table is the last on the page
+        if table_index == total_tables - 1:
+            last_cell = table['cells'][-1]
+            bottom_left_y = last_cell['corners'][2][1]
+            bottom_crop_y = min(height, bottom_left_y + 300)
+            bottom_crop = image[bottom_left_y:bottom_crop_y, 0:width]
+
+            if check_text_presence(bottom_crop):
+                return 'top'
+
+        return None
+
+    all_tables_data = []
+    service_durations = []
+
+    # Sort tables by their top-left Y coordinate (table_box[1]) in ascending order
+    table_info.sort(key=lambda x: x['table_box'][1])
+
+    for i, table in enumerate(table_info):
+        if table['num_columns'] == 6:
+            # Extract text from the second column for digitized data
+            digitized_data = extract_raw_text_from_cells(image, table['cells'], target_column=1)
+
+            # Extract text from the fifth column for service duration
+            fifth_column_data = extract_raw_text_from_cells(image, table['cells'], target_column=4)
+            for cell_data in fifth_column_data:
+                service_durations.append(cell_data['text'])
+
+            # Determine if the table is suspected to be split
+            split_type = is_suspected_split(image, table, i, len(table_info))
+
+            if split_type == 'top' and len(digitized_data) > 0:
+                digitized_data[-1]['cell_suspected_split'] = True
+            elif split_type == 'bottom' and len(digitized_data) > 1:
+                digitized_data[1]['cell_suspected_split'] = True
+
+            table_data = {
+                'table_num': i + 1,
+                'cells': digitized_data
+            }
+            all_tables_data.append(table_data)
+
+    return all_tables_data, service_durations
+
+# STEP 5 Merge all text into one list, repare splitted cells 
 def merge_tables(all_tables_data):
     # Load service descriptions
     with open('service_descriptions.txt', 'r', encoding='utf-8') as f:
@@ -576,30 +535,71 @@ def merge_tables(all_tables_data):
     reference_phrase = "(полустационарное обслуживание)"
 
     # Merge all text rows from all tables
-    merged_table = [cell['text'] for page_tables in all_tables_data for table in page_tables for cell in table['cells'] if cell['text']]
+    merged_table = []
+    for page_tables in all_tables_data:
+        for table in page_tables:
+            for cell in table['cells']:
+                # Clean text by removing the reference phrase
+                cleaned_text = remove_similar_phrases(cell['text'], reference_phrase, confidence_level=70)
+                cell['text'] = cleaned_text
 
-    # Remove similar phrases and correct OCR errors
-    cleaned_table = []
-    for row in merged_table:
-        # Remove reference phrase
-        cleaned_row = remove_similar_phrases(row, reference_phrase)
-        # Correct OCR errors
-        corrected_row, _ = correct_ocr_errors(cleaned_row, correction_dictionary)
-        cleaned_table.append(corrected_row)
+                # Add the cleaned text to the merged_table if it is not empty
+                if cleaned_text:
+                    merged_table.append(cleaned_text)
 
-    # Remove empty rows, header rows, and duplicates
-    unique_table = []
-    seen_rows = set()
-    for row in cleaned_table:
-        if row and row != "Наименование услуги" and row not in seen_rows:
-            unique_table.append(row)
-            seen_rows.add(row)
+    # Collect all cells into a single list, excluding headers
+    all_cells = [cell for page_tables in all_tables_data for table in page_tables for cell in table['cells'][1:]]
 
-    return unique_table
+    # Check and merge suspected split cells
+    final_cells = []
+    i = 0
+    while i < len(all_cells):
+        cell = all_cells[i]
+        if cell['cell_suspected_split']:
+            if i + 1 < len(all_cells) and all_cells[i + 1]['cell_suspected_split']:
+                cell_part_1 = cell['text']
+                cell_part_2 = all_cells[i + 1]['text']
+                combined_text = " ".join([cell_part_1, cell_part_2])
 
+                # Calculate best scores for individual parts and combined text
+                _, score_part_1 = correct_ocr_errors(cell_part_1, correction_dictionary)
+                _, score_part_2 = correct_ocr_errors(cell_part_2, correction_dictionary)
+                _, score_combined = correct_ocr_errors(combined_text, correction_dictionary)
 
+                if score_combined > max(score_part_1, score_part_2):
+                    # If the combined score is better, merge the texts
+                    cell['text'] = combined_text
+                    all_cells[i + 1]['text'] = ""  # Clear the text of the next cell
+                else:
+                    # If not, mark both as not suspected split
+                    cell['cell_suspected_split'] = False
+                    all_cells[i + 1]['cell_suspected_split'] = False
+
+                final_cells.append(cell)
+                i += 2  # Skip the next cell since it's handled
+                continue
+
+        final_cells.append(cell)
+        i += 1
+    
+    # Final correction of OCR errors and removal of duplicates
+    final_texts = []
+    seen_texts = set()
+    for cell in final_cells:
+        # Apply correct_ocr_errors to each cell's text
+        corrected_text, _ = correct_ocr_errors(cell['text'], correction_dictionary)
+        
+        # Add to final_texts if not empty and not seen before
+        if corrected_text and corrected_text not in seen_texts:
+            final_texts.append(corrected_text)
+            seen_texts.add(corrected_text)
+
+    return final_texts
+
+# STEP 6 Extrat name from second page and filter out service duration
 def extract_fio_from_image(image, x1_pct, y1_pct, x2_pct, y2_pct):
     """Crop the image, perform OCR, and extract the cleaned FIO."""
+    
     def crop_image(img, x1_pct, y1_pct, x2_pct, y2_pct):
         """Crop the image based on the relative coordinates."""
         height, width = img.shape[:2]
@@ -610,61 +610,83 @@ def extract_fio_from_image(image, x1_pct, y1_pct, x2_pct, y2_pct):
         return img[y1:y2, x1:x2]
 
     def extract_name(text):
-        """Extract the name after the 'Гражданин(ка): ' phrase."""
-        reference_phrase = "Гражданин(ка):"
+        """Extract the name after the 'Фамилия, имя, отчество:' phrase."""
+        reference_phrase = "Фамилия, имя, отчество:"
         lines = text.split('\n')
 
         for line in lines:
-            if fuzz.partial_ratio(line, reference_phrase) >= 70:
-                # Remove the reference phrase using the fuzzy match and extract the name
-                cleaned_line = remove_similar_phrases(line, reference_phrase)
-                name = cleaned_line.strip()
-                return clean_name(name)
-        
+            if fuzz.partial_ratio(line, reference_phrase) >= 60:
+                target_substring = "отчество:"
+                words = line.split()
+                for i, word in enumerate(words):
+                    if fuzz.partial_ratio(word, target_substring) >= 60:
+                        name = " ".join(words[i+1:]).strip()
+                        return clean_name(name)
         return None
 
     def clean_name(name):
         """Remove unwanted characters from the beginning and end of the name."""
         allowed_chars = "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЬЫЪЭЮЯабвгдеёжзийклмнопрстуфхцчшщьыъэюя"
-        
-        # Remove unwanted characters from the start
         start = 0
         while start < len(name) and name[start] not in allowed_chars:
             start += 1
         
-        # Remove unwanted characters from the end
         end = len(name)
         while end > start and name[end-1] not in allowed_chars:
             end -= 1
         
-        # Extract and return the cleaned name
         return name[start:end]
 
     # Crop the image based on the given coordinates
     cropped_image = crop_image(image, x1_pct, y1_pct, x2_pct, y2_pct)
     
-    # Perform OCR to extract text
-    text = pytesseract.image_to_string(cropped_image, lang='rus', config="--psm 6")
+    # Perform OCR to extract text using EasyOCR
+    easyocr_results = reader.readtext(cropped_image, detail=0, paragraph=True, link_threshold=0.9)
+    text = "\n".join(easyocr_results).strip()
     
     # Extract and clean the FIO from the text
-    return extract_name(text)
+    fio = extract_name(text)
+    
+    return fio
 
+def find_common_service_duration(service_durations):
+    """Find the most common service duration from the list of extracted texts."""
+    # Filter out empty strings and those similar to reference
+    cleaned_texts = [
+        text for text in service_durations
+        if text and fuzz.WRatio(text, "Срок предоставления услуги") <= 60
+    ]
 
+    if cleaned_texts:
+        # Find the most common text
+        most_common_text = max(set(cleaned_texts), key=cleaned_texts.count)
+    
+        # Check if there are two dates in the format dd.mm.yyyy
+        date_pattern = r"\d{2}\.\d{2}\.\d{4}"
+        dates_found = re.findall(date_pattern, most_common_text)
+    
+        if len(dates_found) == 2:
+            # Format the text as "date_1-date_2"
+            date_1, date_2 = dates_found
+            return f"{date_1}-{date_2}"
+        return most_common_text
+    
+    return None
+
+# STEP 7 Combine all functions and return finished result
 def pdf_text_extraction_workflow(pdf_path):
     """Process a PDF file to extract text from tables, handling scanned images and various preprocessing steps."""
     
     # Initialize the array to hold text from all tables.
-    all_texts = []
     name = None  # Initialize variable to store extracted name
+    all_service_durations = [] # Initialize list to store all service durations
+    all_texts = []
 
     # Extract images from the PDF.
     images = extract_images_from_pdf(pdf_path)
 
     # Check if there are images to process
     if images:
-        # Extract name from the first page
-        name = extract_fio_from_image(images[0], 0.08, 0.20, 0.8, 0.35)
-
         # Loop through each image (page) in the PDF.
         for page_number, image in enumerate(images):
             # Step 1: Remove vertical printer lines.
@@ -673,22 +695,30 @@ def pdf_text_extraction_workflow(pdf_path):
             # Step 2: Correct image skew.
             deskewed_image = correct_image_skew(image_without_lines)
             
-            # Step 3: Enhance and clean faint scans.
-            enhanced_image = enhance_and_clean_faint_scan(deskewed_image)
+            # Extract name from the second page
+            if page_number == 1:
+                name = extract_fio_from_image(deskewed_image, 0.08, 0.20, 0.8, 0.35)
             
-            # Step 4: Extract tables and their cells.
-            table_info = extract_tables_and_cells(enhanced_image)
+            # Step 3: Extract tables and their cells.
+            table_info = extract_tables_and_cells(deskewed_image)
             
-            # Step 5: Extract text from the table cells.
-            extracted_text = extract_text_from_table_cells(enhanced_image, table_info)
+            # Step 4: Extract text from the table cells and find the most frequent service duration.
+            extracted_text, service_durations = extract_text_from_table_cells(deskewed_image, table_info)
 
-            # Step 6: Add the extracted text to the all_texts list.
+            # Collect all service durations
+            if service_durations:
+                all_service_durations.extend(service_durations)
+
+            # Step 5: Add the extracted text to the all_texts list.
             all_texts.append(extracted_text if extracted_text else [])
 
-    # Step 7: Merge texts from all tables across all pages.    
+    # Step 6: Find the most common service duration from all pages
+    service_duration = find_common_service_duration(all_service_durations)
+    
+    # Step 7: Merge texts from all tables across all pages.
     merged_tables_text = merge_tables(all_texts)
     
-    return name, merged_tables_text
+    return name, service_duration, merged_tables_text
 
 
 def main():
@@ -703,7 +733,7 @@ def main():
                 temp_pdf_path = temp_pdf.name
 
             # Run the workflow function with the temporary file path
-            name, results = pdf_text_extraction_workflow(temp_pdf_path)
+            name, service_duration, results = pdf_text_extraction_workflow(temp_pdf_path)
 
             # Display the extracted name
             if name:
@@ -711,6 +741,13 @@ def main():
                 st.code(name, language="plaintext")
             else:
                 st.write("ФИО не найдено!")
+
+            # Display the extracted service duration
+            if service_duration:
+                st.write("Срок предоставления услуги:")
+                st.code(service_duration, language="plaintext")
+            else:
+                st.write("Срок предоставления услуги не найден!")
 
             # Display the extracted text with a copy button
             st.write("Все услуги из файла:")
@@ -729,6 +766,7 @@ def main():
                 with st.expander("Показать все страницы из файла"):
                     for img in images:
                         st.image(img, use_column_width=True)
+
 
             # Сlean up the temporary file
             os.remove(temp_pdf_path)
