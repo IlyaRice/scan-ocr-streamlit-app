@@ -78,3 +78,16 @@ EasyOCR sometimes produced errors and typos in the extracted text, which could l
 In some cases, tables in the scanned documents span across multiple pages, causing the text to be split between two pages. This leads to errors in the digitization process, as the two parts of the split text are processed separately.
 
 - **Approach**: I developed a logic to determine if two tables from adjacent pages are actually one split table and merge them back together. The solution involves sorting tables, determining split tables, marking cells as potentially split, merging text based on fuzzy matching scores, and applying OCR error correction to obtain the final corrected and merged text.
+
+## Libraries Used
+
+The following libraries were used in the development of this application:
+
+- OpenCV (cv2): Used for various image processing tasks such as image enhancement, contour detection, and morphological operations.
+- NumPy: Used for efficient array manipulation and numerical computations.
+- Pillow (PIL): Used for handling and processing images.
+- PyMuPDF (fitz): Used for extracting images from PDF files.
+- scikit-learn: Used for implementing linear regression models to refine cell coordinates.
+- EasyOCR: Used for optical character recognition (OCR) to extract text from images.
+- fuzzywuzzy: Used for fuzzy string matching to compare and correct OCR-generated text.
+- Streamlit: Used for building the web application interface.
