@@ -1,4 +1,7 @@
 # PDF Government Document Processing
+<p align="center">
+    <img src="https://raw.githubusercontent.com/IlyaRice/scan-ocr-streamlit-app/main/media/demo.gif" width="40%">
+</p>
 
 This project demonstrates a custom solution for processing PDF scans of government documents. The application takes a PDF scan as input, detects tables within the document, performs OCR on the tables, and extracts relevant text information. The extracted text is then presented to the user in a format that can be easily copied and pasted into an Excel spreadsheet for further analysis.
 
@@ -31,6 +34,10 @@ During the development of this application, several challenges arose due to the 
 In many cases, the scanned documents were slightly tilted, which caused issues in detecting tables and cells accurately. To solve this problem, I developed a function to automatically detect the skew angle of the document and correct it.
 
 - **Approach**: The function applies a Gaussian blur to the image, converts it to a binary format, and detects long, thin contours (which are often aligned with horizontal or vertical lines in the document). By analyzing the angles of these contours, the skew angle is estimated and the image is rotated to correct for the tilt.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/IlyaRice/scan-ocr-streamlit-app/main/media/deskew.gif" width="40%">
+</p>
   
 ### 2. Vertical Printer Lines Interfering with OCR
 
@@ -40,11 +47,19 @@ Some documents contained defects in the form of vertical printer lines, which in
 
 This method uses a stretched morphological kernel to identify vertical lines and filters them based on their height and angle, ensuring that only the unwanted printer lines are removed while preserving the actual content of the document.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/IlyaRice/scan-ocr-streamlit-app/main/media/lines_removal.gif" width="40%">
+</p>
+
 ### 3. Accurately Determining Table and Cell Coordinates
 
 Detecting the precise coordinates of tables and cells within the document is a non-trivial task. The scanned images often contain noise, varying cell sizes, making it challenging to accurately identify the boundaries of each table and cell.
 
 - **Approach**: I developed a multi-step algorithm that combines various image processing techniques to accurately detect table and cell coordinates. The algorithm enhances the image, detects contours, filters them to identify cells, creates a mask to detect table borders, assigns cells to tables, and refines cell coordinates based on the table structure.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/IlyaRice/scan-ocr-streamlit-app/main/media/table_detection.png" width="40%">
+</p>
 
 ### 4. Merged Cells Due to Poor Scan Quality
 
