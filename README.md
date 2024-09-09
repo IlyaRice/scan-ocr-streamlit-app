@@ -67,7 +67,7 @@ In some cases, the poor quality of the scanned documents led to cells being merg
 
 - **Approach**: Knowing that all tables have a simple structure without merged cells, I utilized the already determined intersection points of the table lines and applied a regression line method to find the intersection points of the lines in the incorrectly identified cells.
 
-## 5. OCR Errors and Typos in Extracted Text
+### 5. OCR Errors and Typos in Extracted Text
 
 EasyOCR sometimes produced errors and typos in the extracted text, which could lead to inaccuracies in the final output.
 
